@@ -21,31 +21,50 @@ st.markdown("""
     h1 {
         font-weight: 700;
         letter-spacing: -0.025em;
-        color: #0f172a;
     }
-    p {
-        color: #64748b;
-    }
-
+    
     /* Subheader spacing */
     .stSubheader {
         margin-top: 1.5rem;
         font-weight: 600;
-        color: #1e293b;
     }
 
-    /* Minimalist upload styling */
+    /* Minimalist upload styling with theme-aware borders */
     .stFileUploader {
-        border: 1px solid #e2e8f0;
+        border: 1px solid rgba(128, 128, 128, 0.2);
         border-radius: 8px;
         padding: 10px;
-        background-color: #ffffff;
     }
 
     /* Footer/Info styling */
     .stAlert {
         border-radius: 8px;
-        border: 1px solid #e2e8f0;
+        border: 1px solid rgba(128, 128, 128, 0.2);
+        padding: 0.75rem 1rem;
+        min-height: 52px;
+        display: flex;
+        align-items: center;
+    }
+    
+    /* Match Download button style to Alert box */
+    .stDownloadButton, .stDownloadButton > button {
+        width: 100%;
+        min-height: 52px;
+        border-radius: 8px !important;
+        border: 1px solid rgba(128, 128, 128, 0.2) !important;
+        background-color: transparent !important;
+        transition: all 0.2s ease;
+    }
+    .stDownloadButton > button:hover {
+        background-color: rgba(128, 128, 128, 0.1) !important;
+        border-color: rgba(128, 128, 128, 0.4) !important;
+    }
+    
+    /* Divider styling */
+    hr {
+        margin-top: 2rem;
+        margin-bottom: 2rem;
+        opacity: 0.1;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -232,14 +251,70 @@ if mtd_file:
         if error:
             st.error(error)
 
+# Helper function to export to Excel
+import io
+def export_to_excel(df, title):
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Summary', startrow=1)
+        workbook = writer.book
+        worksheet = writer.sheets['Summary']
+        
+        # Add title
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+        header_fill = PatternFill(start_color='333333', end_color='333333', fill_type='solid')
+        header_font = Font(color='FFFFFF', bold=True, size=14)
+        
+        worksheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(df.columns))
+        cell = worksheet.cell(row=1, column=1)
+        cell.value = title
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center')
+        
+        # Style header row of table
+        table_header_fill = PatternFill(start_color='E0E0E0', end_color='E0E0E0', fill_type='solid')
+        for col_num, value in enumerate(df.columns, 1):
+            cell = worksheet.cell(row=2, column=col_num)
+            cell.fill = table_header_fill
+            cell.font = Font(bold=True)
+            cell.border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+
+        # Style data rows
+        for row_num in range(3, len(df) + 3):
+            for col_num in range(1, len(df.columns) + 1):
+                cell = worksheet.cell(row=row_num, column=col_num)
+                cell.border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+                if row_num == len(df) + 2: # Grand Total row
+                    cell.font = Font(bold=True)
+                    cell.fill = PatternFill(start_color='F0F0F0', end_color='F0F0F0', fill_type='solid')
+
+        # Auto-adjust column widths
+        from openpyxl.utils import get_column_letter
+        for i, col in enumerate(worksheet.columns, 1):
+            max_length = 0
+            column_letter = get_column_letter(i)
+            for cell in col:
+                try:
+                    if cell.value and len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = (max_length + 5)
+            worksheet.column_dimensions[column_letter].width = adjusted_width
+
+    return output.getvalue()
+
 # Final Summary Table (Only shows when both are uploaded)
 if shinsa_file and mtd_file and not error:
     # Use the extracted date from the 'To Date' column, or a placeholder if missing
     display_date = auto_period if auto_period else "Date Not Found"
+    report_title = f"Audit Summary Report [{display_date}]"
     
     st.markdown(f"""
         <div style='background-color: #333333; padding: 10px; border-radius: 5px; margin-bottom: 20px; text-align: center;'>
-            <h2 style='color: white; margin: 0;'>Audit Summary Report [{display_date}]</h2>
+            <h2 style='color: white; margin: 0;'>{report_title}</h2>
         </div>
     """, unsafe_allow_html=True)
     
@@ -255,8 +330,19 @@ if shinsa_file and mtd_file and not error:
         hide_index=True
     )
     
-    # Highlighting the final coverage status
-    st.info(f"Final Coverage for {display_date}: **{grand_total_row['Coverage %']}**")
+    # Display as clean, professional text instead of a box
+    st.markdown(f"### Final Coverage for {display_date}: **{grand_total_row['Coverage %']}**")
+
+    # Download button directly below, aligned to the left
+    col_dl, col_empty = st.columns([1, 3])
+    with col_dl:
+        excel_data = export_to_excel(display_df, report_title)
+        st.download_button(
+            label="📊 Download Excel Report",
+            data=excel_data,
+            file_name=f"Audit_Summary_{display_date}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
 # Overall status help
 if not shinsa_file or not mtd_file:
