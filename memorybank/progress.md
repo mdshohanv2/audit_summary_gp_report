@@ -5,6 +5,8 @@
 - [x] `app_brief.md` created
 - [x] `progress.md` created
 - [x] Define file upload requirements (Shinsa & MTD Report)
-- [ ] Define data analysis/processing requirements
-- [ ] Implement Streamlit app
+- [x] Implement Shinsa Audit Report status counting
+- [x] Implement MTD Successful visit Report summation
+- [ ] Define final merged analysis logic (if any)
+- [ ] Final UI Polish
 - [ ] Implement Streamlit app
