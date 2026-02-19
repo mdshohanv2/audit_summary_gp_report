@@ -92,57 +92,46 @@ def get_mtd_summary(file):
         else:
             df = pd.read_excel(file)
         
-        # 1. Look for Successful Visits column
+        # 1. Total Successful Visits
         target_col = 'mtd successful visits'
         actual_col = next((c for c in df.columns if str(c).strip().lower().replace('\n', ' ') == target_col), None)
-        
-        total_sum = 0
-        sum_error = None
-        if actual_col:
-            numeric_values = pd.to_numeric(df[actual_col], errors='coerce')
-            total_sum = numeric_values.sum()
-        else:
-            sum_error = "Column '[MTD Successful Visits]' not found."
+        total_sum = pd.to_numeric(df[actual_col], errors='coerce').sum() if actual_col else 0
 
-        # 2. Look for 'To Date' column to extract period
-        date_col_name = 'to date'
-        actual_date_col = next((c for c in df.columns if str(c).strip().lower() == date_col_name), None)
-        extracted_period = None
-        
-        # 2. Look for 'To Date' column to extract period
-        # Using .replace('\n', ' ') to handle multi-line headers shown in the user image
+        # 2. Individual Status Sums (New Requirement)
+        status_mappings = {
+            "open": "visit status open",
+            "temporarily_closed": "visit status temporary closed",
+            "permanently_closed": "visit status permanently closed",
+            "moved": "visit status moved",
+            "pos_not_found": "visit status not found"
+        }
+        status_sums = {}
+        for key, header in status_mappings.items():
+            col = next((c for c in df.columns if str(c).strip().lower().replace('\n', ' ') == header), None)
+            status_sums[key] = pd.to_numeric(df[col], errors='coerce').sum() if col else 0
+
+        # 3. Date extraction
         actual_date_col = next((c for c in df.columns if str(c).strip().lower().replace('\n', ' ') == 'to date'), None)
-        
         extracted_period = None
         if actual_date_col:
-            # Try to convert the whole column to datetime
             dates = pd.to_datetime(df[actual_date_col], errors='coerce').dropna()
             if not dates.empty:
-                # Format as 13-02-2026 (DD-MM-YYYY)
-                extracted_period = dates.max().strftime('%d-%m-%Y')
+                extracted_period = dates.max().strftime('%d-%B-%Y')
             else:
-                # Fallback for text-based dates
                 last_val = str(df[actual_date_col].dropna().iloc[-1]).strip()
                 import re
-                # Match YYYY-MM-DD
-                match_iso = re.search(r'(\d{4})-(\d{2})-(\d{2})', last_val)
-                # Match DD-MM-YYYY
-                match_dmy = re.search(r'(\d{2})-(\d{2})-(\d{4})', last_val)
-                
-                if match_iso:
-                    yyyy, mm, dd = match_iso.groups()
-                    extracted_period = f"{dd}-{mm}-{yyyy}"
-                elif match_dmy:
-                    extracted_period = last_val
+                match = re.search(r'(\d{4})-(\d{2})-(\d{2})', last_val)
+                if match:
+                    extracted_period = pd.to_datetime(last_val).strftime('%d-%B-%Y')
                 else:
                     extracted_period = last_val
         
-        return total_sum, extracted_period, sum_error
+        return total_sum, status_sums, extracted_period, None
     except Exception as e:
-        return 0, None, f"Error processing file: {str(e)}"
+        return 0, {}, None, f"Error processing file: {str(e)}"
 
 # Helper function to create final summary table
-def create_final_summary(shinsa_counts, total_shinsa, mtd_total):
+def create_final_summary(shinsa_counts, total_shinsa, mtd_total, mtd_status_sums):
     # Mapping table label to internal normalized status keys
     mapping = [
         ("Visit Status Open", "open"),
@@ -154,37 +143,37 @@ def create_final_summary(shinsa_counts, total_shinsa, mtd_total):
     
     data = []
     for label, status_key in mapping:
-        # Get count from shinsa_counts if available
+        # Shinsa counts
         count = 0
         if shinsa_counts is not None and not shinsa_counts.empty:
             match = shinsa_counts[shinsa_counts['Status'] == status_key]
             if not match.empty:
                 count = match.iloc[0]['Count']
         
-        # Calculations (following image logic: Succ visits for rows = 0)
-        succ_visits = 0
-        visit_ach = 0.0
+        # MTD counts for this category
+        mtd_val = mtd_status_sums.get(status_key, 0)
+        
+        # Calculations based on standard audit logic
+        visit_ach = (mtd_val / mtd_total) if mtd_total > 0 else 0.0
         audit_ach = (count / total_shinsa) if total_shinsa > 0 else 0.0
-        coverage = (count / mtd_total) if mtd_total > 0 else 0.0
+        row_coverage = (count / mtd_val) if mtd_val > 0 else 0.0
         
         data.append({
             "Visit Status": label,
-            "Successful Visits": succ_visits,
+            "Successful Visits": int(mtd_val),
             "Visit Ach%": f"{visit_ach:.2%}",
             "Audited Visits": int(count),
             "Audit Ach%": f"{audit_ach:.2%}",
-            "Coverage %": f"{coverage:.2%}"
+            "Coverage %": f"{row_coverage:.2%}"
         })
     
     # Calculation for Grand Total row
-    grand_total_coverage = (total_shinsa / mtd_total) if mtd_total > 0 else 0.0 # Wait, image shows Audited / Succ
-    # Actually, in image: 14,220 / 2,74,950 = 5.17%
     grand_total_coverage = (total_shinsa / mtd_total) if mtd_total > 0 else 0.0
     
     grand_total = {
         "Visit Status": "Grand Total",
         "Successful Visits": int(mtd_total),
-        "Visit Ach%": "0%", # As per image
+        "Visit Ach%": "100.00%", 
         "Audited Visits": int(total_shinsa),
         "Audit Ach%": "100.00%",
         "Coverage %": f"{grand_total_coverage:.2%}"
@@ -225,6 +214,7 @@ st.divider()
 shinsa_status_df = None
 shinsa_total = 0
 mtd_total_sum = 0
+mtd_status_sums = {}
 auto_period = None
 
 # Processing Shinsa
@@ -238,7 +228,7 @@ if shinsa_file:
 # PROCESSING logic for MTD report
 if mtd_file:
     with st.spinner("Analyzing MTD..."):
-        mtd_total_sum, auto_period, error = get_mtd_summary(mtd_file)
+        mtd_total_sum, mtd_status_sums, auto_period, error = get_mtd_summary(mtd_file)
         if error:
             st.error(error)
 
@@ -253,7 +243,7 @@ if shinsa_file and mtd_file and not error:
         </div>
     """, unsafe_allow_html=True)
     
-    final_df, grand_total_row = create_final_summary(shinsa_status_df, shinsa_total, mtd_total_sum)
+    final_df, grand_total_row = create_final_summary(shinsa_status_df, shinsa_total, mtd_total_sum, mtd_status_sums)
     
     # Add grand total row to dataframe for display
     display_df = pd.concat([final_df, pd.DataFrame([grand_total_row])], ignore_index=True)
