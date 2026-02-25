@@ -334,15 +334,30 @@ if shinsa_file and mtd_file and not error:
     st.markdown(f"### Final Coverage for {display_date}: **{grand_total_row['Coverage %']}**")
 
     # Download button directly below, aligned to the left
-    col_dl, col_empty = st.columns([1, 3])
+    col_dl, col_empty = st.columns([1.2, 2.8])
     with col_dl:
         excel_data = export_to_excel(display_df, report_title)
         st.download_button(
             label="📊 Download Excel Report",
             data=excel_data,
             file_name=f"Audit_Summary_{display_date}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
         )
+        
+        # New: Download the Automation Script
+        try:
+            with open(r"d:\GP Audit Team\Reports\audit_summary_gp_report\ME_MTD_Report_Automation.py", "rb") as f:
+                script_data = f.read()
+            st.download_button(
+                label="🐍 Download MTD Script",
+                data=script_data,
+                file_name="ME_MTD_Report_Automation.py",
+                mime="text/x-python",
+                use_container_width=True
+            )
+        except Exception as e:
+            st.error("Automation script not found.")
 
 # Overall status help
 if not shinsa_file or not mtd_file:
