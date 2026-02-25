@@ -5,7 +5,8 @@ A professional, minimal Streamlit application designed for the GP Audit Team to 
 
 ## Features & Logic
 - **UI Design:** Minimal "shadcn-like" aesthetic with a wide layout for laptop optimization.
-- **Reporting Period:** Automatically extracted from the `To Date` column in the MTD report (formats as `DD-Month-YYYY`).
+- **Reporting Period:** Automatically extracted from the `To Date` column in the MTD report. Formats as `DD-Month-YYYY` (e.g., 13-February-2026).
+- **Theme Support:** Fully compatible with both light and dark modes with theme-aware styling.
 
 ### Data Source 1: Audit Report (Shinsa)
 - **File Types:** Excel (.xlsx, .xls) and CSV.
@@ -19,7 +20,7 @@ A professional, minimal Streamlit application designed for the GP Audit Team to 
     - `MTD Successful Visits` (Total summation).
     - `Visit Status Open`, `Visit Status Temporary Closed`, etc. (Individual sums).
     - `To Date` (For report period).
-- **Handling:** Robust matching for headers with newlines and varying cases.
+- **Handling:** Robust matching for multi-line headers (new-line characters) and varying cases.
 
 ### Final Summary Report Table
 Combines data from both sources with the following calculations:
@@ -28,4 +29,12 @@ Combines data from both sources with the following calculations:
 3. **Audited Visits:** Counted from Shinsa Report per category.
 4. **Audit Ach%:** `(Audited Visits of Row) / (Total Audited Visits)`.
 5. **Coverage %:** `(Audited Visits of Row) / (Successful Visits of Row)`.
-6. **Grand Totals:** Aggregated sums and percentages for the entire dataset.
+6. **Grand Totals:** Aggregated sums and 100.00% benchmark for achievement columns.
+
+### Export Features
+- **Excel Export:** A stylised Excel file with:
+    - Custom dark header with the report title.
+    - Auto-adjusted column widths.
+    - Centered cell alignments.
+    - Bolded Grand Total row.
+    - Download button positioned cleanly at the bottom-left under the final coverage summary.
